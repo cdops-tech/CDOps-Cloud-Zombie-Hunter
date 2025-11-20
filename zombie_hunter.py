@@ -705,8 +705,8 @@ class ZombieHunter:
         zombies = []
         
         try:
-            lambda_client = self.session.client('lambda', region_name=region)
-            cloudwatch = self.session.client('cloudwatch', region_name=region)
+            lambda_client = boto3.client('lambda', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
             
             self.log(f"Scanning Lambda functions in {region}...", "INFO")
             
@@ -725,8 +725,8 @@ class ZombieHunter:
                             Namespace='AWS/Lambda',
                             MetricName='Invocations',
                             Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
-                            StartTime=datetime.utcnow() - timedelta(days=90),
-                            EndTime=datetime.utcnow(),
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=90),
+                            EndTime=datetime.now(timezone.utc),
                             Period=86400 * 90,  # 90 days in seconds
                             Statistics=['Sum']
                         )
@@ -803,8 +803,8 @@ class ZombieHunter:
         zombies = []
         
         try:
-            dynamodb = self.session.client('dynamodb', region_name=region)
-            cloudwatch = self.session.client('cloudwatch', region_name=region)
+            dynamodb = boto3.client('dynamodb', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
             
             self.log(f"Scanning DynamoDB tables in {region}...", "INFO")
             
@@ -827,8 +827,8 @@ class ZombieHunter:
                             Namespace='AWS/DynamoDB',
                             MetricName='ConsumedReadCapacityUnits',
                             Dimensions=[{'Name': 'TableName', 'Value': table_name}],
-                            StartTime=datetime.utcnow() - timedelta(days=30),
-                            EndTime=datetime.utcnow(),
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=30),
+                            EndTime=datetime.now(timezone.utc),
                             Period=86400 * 30,  # 30 days
                             Statistics=['Sum']
                         )
@@ -837,8 +837,8 @@ class ZombieHunter:
                             Namespace='AWS/DynamoDB',
                             MetricName='ConsumedWriteCapacityUnits',
                             Dimensions=[{'Name': 'TableName', 'Value': table_name}],
-                            StartTime=datetime.utcnow() - timedelta(days=30),
-                            EndTime=datetime.utcnow(),
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=30),
+                            EndTime=datetime.now(timezone.utc),
                             Period=86400 * 30,
                             Statistics=['Sum']
                         )
@@ -918,8 +918,8 @@ class ZombieHunter:
         zombies = []
         
         try:
-            elasticache = self.session.client('elasticache', region_name=region)
-            cloudwatch = self.session.client('cloudwatch', region_name=region)
+            elasticache = boto3.client('elasticache', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
             
             self.log(f"Scanning ElastiCache clusters in {region}...", "INFO")
             
@@ -941,8 +941,8 @@ class ZombieHunter:
                             Namespace='AWS/ElastiCache',
                             MetricName='CurrConnections',
                             Dimensions=[{'Name': 'ReplicationGroupId', 'Value': cluster_id}],
-                            StartTime=datetime.utcnow() - timedelta(days=14),
-                            EndTime=datetime.utcnow(),
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=14),
+                            EndTime=datetime.now(timezone.utc),
                             Period=86400 * 14,  # 14 days
                             Statistics=['Maximum']
                         )
@@ -1006,8 +1006,8 @@ class ZombieHunter:
                             Namespace='AWS/ElastiCache',
                             MetricName='CurrConnections',
                             Dimensions=[{'Name': 'CacheClusterId', 'Value': cluster_id}],
-                            StartTime=datetime.utcnow() - timedelta(days=14),
-                            EndTime=datetime.utcnow(),
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=14),
+                            EndTime=datetime.now(timezone.utc),
                             Period=86400 * 14,
                             Statistics=['Maximum']
                         )
