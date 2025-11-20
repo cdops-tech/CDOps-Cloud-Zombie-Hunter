@@ -65,7 +65,10 @@ class ZombieHunter:
             'unused_load_balancers': 0,
             'idle_rds_instances': 0,
             'empty_s3_buckets': 0,
-            'unused_cloudfront_distributions': 0
+            'unused_cloudfront_distributions': 0,
+            'unused_lambda_functions': 0,
+            'idle_dynamodb_tables': 0,
+            'idle_elasticache_clusters': 0
         }
         
     def log(self, message: str, level: str = "INFO"):
@@ -679,6 +682,387 @@ class ZombieHunter:
         
         return zombies
     
+    def scan_unused_lambda_functions(self, region: str) -> List[Dict[str, Any]]:
+        """
+        Scan for Lambda functions with zero invocations in the past 90 days.
+        
+        Lambda functions that haven't been invoked recently may be:
+        - Legacy functions no longer in use
+        - Test functions that were never cleaned up
+        - Functions replaced by newer versions
+        
+        Cost Impact:
+        - Charged for allocated storage (GB-seconds)
+        - Request charges even if never invoked
+        - Estimated $0.20-$2.00/month per idle function depending on memory allocation
+        
+        Args:
+            region: AWS region to scan
+            
+        Returns:
+            List of zombie Lambda function details
+        """
+        zombies = []
+        
+        try:
+            lambda_client = boto3.client('lambda', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
+            
+            self.log(f"Scanning Lambda functions in {region}...", "INFO")
+            
+            # List all Lambda functions
+            paginator = lambda_client.get_paginator('list_functions')
+            
+            for page in paginator.paginate():
+                for function in page.get('Functions', []):
+                    function_name = function['FunctionName']
+                    memory_size = function.get('MemorySize', 128)
+                    code_size = function.get('CodeSize', 0)
+                    
+                    try:
+                        # Check invocations in last 90 days
+                        response = cloudwatch.get_metric_statistics(
+                            Namespace='AWS/Lambda',
+                            MetricName='Invocations',
+                            Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=90),
+                            EndTime=datetime.now(timezone.utc),
+                            Period=86400 * 90,  # 90 days in seconds
+                            Statistics=['Sum']
+                        )
+                        
+                        total_invocations = sum([point['Sum'] for point in response.get('Datapoints', [])])
+                        
+                        # If no invocations in 90 days, it's a zombie
+                        if total_invocations == 0:
+                            # Estimate cost: storage + potential compute allocation
+                            # Storage: $0.0000166667 per GB-second
+                            # Assume function kept warm = ~$0.50-$2.00/month depending on memory
+                            if memory_size <= 512:
+                                estimated_monthly_cost = 0.50
+                            elif memory_size <= 1024:
+                                estimated_monthly_cost = 1.00
+                            else:
+                                estimated_monthly_cost = 2.00
+                            
+                            zombie = {
+                                'resource_type': 'Lambda Function',
+                                'resource_id': function_name,
+                                'region': region,
+                                'details': f"Memory: {memory_size}MB, Code Size: {code_size / 1024:.1f}KB, No invocations in 90 days",
+                                'estimated_monthly_cost': f"${estimated_monthly_cost:.2f}",
+                                'reason': 'No invocations in the last 90 days'
+                            }
+                            
+                            zombies.append(zombie)
+                            self.findings.append(zombie)
+                    except Exception as e:
+                        # Skip if CloudWatch metrics not accessible
+                        if self.verbose:
+                            self.log(f"Could not check metrics for {function_name}: {e}", "WARNING")
+                        continue
+            
+            self.scan_summary['unused_lambda_functions'] += len(zombies)
+            
+            if zombies:
+                self.log(f"Found {len(zombies)} unused Lambda functions", "WARNING")
+            else:
+                self.log(f"No unused Lambda functions found", "SUCCESS")
+                
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ['UnauthorizedOperation', 'AccessDenied']:
+                self.log(f"Permission denied for Lambda functions. Skipping...", "WARNING")
+            else:
+                self.log(f"Error scanning Lambda functions: {e}", "ERROR")
+        except Exception as e:
+            self.log(f"Unexpected error scanning Lambda functions: {e}", "ERROR")
+        
+        return zombies
+    
+    def scan_idle_dynamodb_tables(self, region: str) -> List[Dict[str, Any]]:
+        """
+        Scan for DynamoDB tables with zero read/write activity in the past 30 days.
+        
+        Idle DynamoDB tables may be:
+        - Archived data that should be moved to S3 Glacier
+        - Test/development tables never cleaned up
+        - Tables replaced by newer schema versions
+        
+        Cost Impact:
+        - Provisioned capacity: Fixed hourly cost regardless of usage
+        - On-demand: Still pays for storage even with zero requests
+        - Estimated $0.25-$50+/month per table depending on capacity and storage
+        
+        Args:
+            region: AWS region to scan
+            
+        Returns:
+            List of zombie DynamoDB table details
+        """
+        zombies = []
+        
+        try:
+            dynamodb = boto3.client('dynamodb', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
+            
+            self.log(f"Scanning DynamoDB tables in {region}...", "INFO")
+            
+            # List all tables
+            paginator = dynamodb.get_paginator('list_tables')
+            
+            for page in paginator.paginate():
+                for table_name in page.get('TableNames', []):
+                    try:
+                        # Get table details
+                        table_info = dynamodb.describe_table(TableName=table_name)
+                        table = table_info['Table']
+                        
+                        billing_mode = table.get('BillingModeSummary', {}).get('BillingMode', 'PROVISIONED')
+                        table_size_bytes = table.get('TableSizeBytes', 0)
+                        item_count = table.get('ItemCount', 0)
+                        
+                        # Check read/write activity in last 30 days
+                        read_response = cloudwatch.get_metric_statistics(
+                            Namespace='AWS/DynamoDB',
+                            MetricName='ConsumedReadCapacityUnits',
+                            Dimensions=[{'Name': 'TableName', 'Value': table_name}],
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=30),
+                            EndTime=datetime.now(timezone.utc),
+                            Period=86400 * 30,  # 30 days
+                            Statistics=['Sum']
+                        )
+                        
+                        write_response = cloudwatch.get_metric_statistics(
+                            Namespace='AWS/DynamoDB',
+                            MetricName='ConsumedWriteCapacityUnits',
+                            Dimensions=[{'Name': 'TableName', 'Value': table_name}],
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=30),
+                            EndTime=datetime.now(timezone.utc),
+                            Period=86400 * 30,
+                            Statistics=['Sum']
+                        )
+                        
+                        total_reads = sum([point['Sum'] for point in read_response.get('Datapoints', [])])
+                        total_writes = sum([point['Sum'] for point in write_response.get('Datapoints', [])])
+                        
+                        # If no activity in 30 days, it's a zombie
+                        if total_reads == 0 and total_writes == 0:
+                            # Estimate cost based on billing mode
+                            if billing_mode == 'PROVISIONED':
+                                # Provisioned capacity: assume minimal 1 RCU + 1 WCU
+                                # $0.00013 per RCU-hour + $0.00065 per WCU-hour
+                                estimated_monthly_cost = (1 * 0.00013 + 1 * 0.00065) * 730  # hours/month
+                            else:
+                                # On-demand: storage cost only
+                                # $0.25 per GB-month
+                                estimated_monthly_cost = (table_size_bytes / (1024**3)) * 0.25
+                            
+                            # Minimum $0.25/month
+                            estimated_monthly_cost = max(0.25, estimated_monthly_cost)
+                            
+                            zombie = {
+                                'resource_type': 'DynamoDB Table',
+                                'resource_id': table_name,
+                                'region': region,
+                                'details': f"Billing: {billing_mode}, Size: {table_size_bytes / (1024**2):.1f}MB, Items: {item_count}, No activity in 30 days",
+                                'estimated_monthly_cost': f"${estimated_monthly_cost:.2f}",
+                                'reason': 'No read/write activity in the last 30 days'
+                            }
+                            
+                            zombies.append(zombie)
+                            self.findings.append(zombie)
+                    except Exception as e:
+                        if self.verbose:
+                            self.log(f"Could not check table {table_name}: {e}", "WARNING")
+                        continue
+            
+            self.scan_summary['idle_dynamodb_tables'] += len(zombies)
+            
+            if zombies:
+                self.log(f"Found {len(zombies)} idle DynamoDB tables", "WARNING")
+            else:
+                self.log(f"No idle DynamoDB tables found", "SUCCESS")
+                
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ['UnauthorizedOperation', 'AccessDenied']:
+                self.log(f"Permission denied for DynamoDB tables. Skipping...", "WARNING")
+            else:
+                self.log(f"Error scanning DynamoDB tables: {e}", "ERROR")
+        except Exception as e:
+            self.log(f"Unexpected error scanning DynamoDB tables: {e}", "ERROR")
+        
+        return zombies
+    
+    def scan_idle_elasticache_clusters(self, region: str) -> List[Dict[str, Any]]:
+        """
+        Scan for ElastiCache clusters with zero connections in the past 14 days.
+        
+        Idle ElastiCache clusters may be:
+        - Development/test environments left running
+        - Clusters from decommissioned applications
+        - Over-provisioned cache layers no longer needed
+        
+        Cost Impact:
+        - Instance costs: $0.017-$6.80+/hour depending on node type
+        - No data transfer if unused, but instance costs remain
+        - Estimated $12-$5,000+/month per idle cluster
+        
+        Args:
+            region: AWS region to scan
+            
+        Returns:
+            List of zombie ElastiCache cluster details
+        """
+        zombies = []
+        
+        try:
+            elasticache = boto3.client('elasticache', region_name=region)
+            cloudwatch = boto3.client('cloudwatch', region_name=region)
+            
+            self.log(f"Scanning ElastiCache clusters in {region}...", "INFO")
+            
+            # Scan Redis clusters
+            redis_paginator = elasticache.get_paginator('describe_replication_groups')
+            for page in redis_paginator.paginate():
+                for cluster in page.get('ReplicationGroups', []):
+                    cluster_id = cluster['ReplicationGroupId']
+                    status = cluster['Status']
+                    node_type = cluster.get('CacheNodeType', 'unknown')
+                    num_nodes = len(cluster.get('MemberClusters', []))
+                    
+                    if status != 'available':
+                        continue
+                    
+                    try:
+                        # Check connections in last 14 days
+                        response = cloudwatch.get_metric_statistics(
+                            Namespace='AWS/ElastiCache',
+                            MetricName='CurrConnections',
+                            Dimensions=[{'Name': 'ReplicationGroupId', 'Value': cluster_id}],
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=14),
+                            EndTime=datetime.now(timezone.utc),
+                            Period=86400 * 14,  # 14 days
+                            Statistics=['Maximum']
+                        )
+                        
+                        max_connections = max([point['Maximum'] for point in response.get('Datapoints', [])], default=0)
+                        
+                        # If no connections in 14 days, it's a zombie
+                        if max_connections == 0:
+                            # Estimate cost based on node type
+                            # Common node costs (per hour): cache.t3.micro=$0.017, cache.m5.large=$0.136, cache.r5.large=$0.188
+                            if 't2.micro' in node_type or 't3.micro' in node_type:
+                                hourly_cost = 0.017
+                            elif 't2.small' in node_type or 't3.small' in node_type:
+                                hourly_cost = 0.034
+                            elif 'm5.large' in node_type:
+                                hourly_cost = 0.136
+                            elif 'r5.large' in node_type:
+                                hourly_cost = 0.188
+                            else:
+                                hourly_cost = 0.10  # Conservative estimate
+                            
+                            estimated_monthly_cost = hourly_cost * 730 * num_nodes  # hours/month * nodes
+                            
+                            zombie = {
+                                'resource_type': 'ElastiCache Cluster (Redis)',
+                                'resource_id': cluster_id,
+                                'region': region,
+                                'details': f"Node Type: {node_type}, Nodes: {num_nodes}, No connections in 14 days",
+                                'estimated_monthly_cost': f"${estimated_monthly_cost:.2f}",
+                                'reason': 'No connections in the last 14 days'
+                            }
+                            
+                            zombies.append(zombie)
+                            self.findings.append(zombie)
+                    except Exception as e:
+                        if self.verbose:
+                            self.log(f"Could not check metrics for {cluster_id}: {e}", "WARNING")
+                        continue
+            
+            # Scan Memcached clusters
+            memcached_paginator = elasticache.get_paginator('describe_cache_clusters')
+            for page in memcached_paginator.paginate():
+                for cluster in page.get('CacheClusters', []):
+                    cluster_id = cluster['CacheClusterId']
+                    engine = cluster.get('Engine', '')
+                    
+                    # Skip Redis clusters (already handled above)
+                    if engine != 'memcached':
+                        continue
+                    
+                    status = cluster['CacheClusterStatus']
+                    node_type = cluster.get('CacheNodeType', 'unknown')
+                    num_nodes = cluster.get('NumCacheNodes', 1)
+                    
+                    if status != 'available':
+                        continue
+                    
+                    try:
+                        # Check connections in last 14 days
+                        response = cloudwatch.get_metric_statistics(
+                            Namespace='AWS/ElastiCache',
+                            MetricName='CurrConnections',
+                            Dimensions=[{'Name': 'CacheClusterId', 'Value': cluster_id}],
+                            StartTime=datetime.now(timezone.utc) - timedelta(days=14),
+                            EndTime=datetime.now(timezone.utc),
+                            Period=86400 * 14,
+                            Statistics=['Maximum']
+                        )
+                        
+                        max_connections = max([point['Maximum'] for point in response.get('Datapoints', [])], default=0)
+                        
+                        if max_connections == 0:
+                            # Same cost estimation as Redis
+                            if 't2.micro' in node_type or 't3.micro' in node_type:
+                                hourly_cost = 0.017
+                            elif 't2.small' in node_type or 't3.small' in node_type:
+                                hourly_cost = 0.034
+                            elif 'm5.large' in node_type:
+                                hourly_cost = 0.136
+                            elif 'r5.large' in node_type:
+                                hourly_cost = 0.188
+                            else:
+                                hourly_cost = 0.10
+                            
+                            estimated_monthly_cost = hourly_cost * 730 * num_nodes
+                            
+                            zombie = {
+                                'resource_type': 'ElastiCache Cluster (Memcached)',
+                                'resource_id': cluster_id,
+                                'region': region,
+                                'details': f"Node Type: {node_type}, Nodes: {num_nodes}, No connections in 14 days",
+                                'estimated_monthly_cost': f"${estimated_monthly_cost:.2f}",
+                                'reason': 'No connections in the last 14 days'
+                            }
+                            
+                            zombies.append(zombie)
+                            self.findings.append(zombie)
+                    except Exception as e:
+                        if self.verbose:
+                            self.log(f"Could not check metrics for {cluster_id}: {e}", "WARNING")
+                        continue
+            
+            self.scan_summary['idle_elasticache_clusters'] += len(zombies)
+            
+            if zombies:
+                self.log(f"Found {len(zombies)} idle ElastiCache clusters", "WARNING")
+            else:
+                self.log(f"No idle ElastiCache clusters found", "SUCCESS")
+                
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code in ['UnauthorizedOperation', 'AccessDenied']:
+                self.log(f"Permission denied for ElastiCache clusters. Skipping...", "WARNING")
+            else:
+                self.log(f"Error scanning ElastiCache clusters: {e}", "ERROR")
+        except Exception as e:
+            self.log(f"Unexpected error scanning ElastiCache clusters: {e}", "ERROR")
+        
+        return zombies
+    
     def run_scan(self):
         """Execute the complete scan across all specified regions."""
         print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
@@ -698,6 +1082,9 @@ class ZombieHunter:
             self.scan_idle_rds_instances(region)
             self.scan_empty_s3_buckets(region)
             self.scan_unused_cloudfront_distributions(region)
+            self.scan_unused_lambda_functions(region)
+            self.scan_idle_dynamodb_tables(region)
+            self.scan_idle_elasticache_clusters(region)
     
     def calculate_total_savings(self) -> float:
         """
@@ -737,7 +1124,10 @@ class ZombieHunter:
             ['Unused Load Balancers', self.scan_summary['unused_load_balancers']],
             ['Idle RDS Instances (stopped)', self.scan_summary['idle_rds_instances']],
             ['Empty S3 Buckets', self.scan_summary['empty_s3_buckets']],
-            ['Unused CloudFront Distributions', self.scan_summary['unused_cloudfront_distributions']]
+            ['Unused CloudFront Distributions', self.scan_summary['unused_cloudfront_distributions']],
+            ['Unused Lambda Functions', self.scan_summary['unused_lambda_functions']],
+            ['Idle DynamoDB Tables', self.scan_summary['idle_dynamodb_tables']],
+            ['Idle ElastiCache Clusters', self.scan_summary['idle_elasticache_clusters']]
         ]
         
         print(tabulate(summary_data, headers=['Resource Type', 'Count'], tablefmt='grid'))
