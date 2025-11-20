@@ -5,7 +5,7 @@
 This document provides a comprehensive security analysis of the CDOps Cloud Zombie Hunter tool, covering architecture, vulnerabilities, best practices, and compliance considerations.
 
 **Last Updated:** November 18, 2025  
-**Version:** 2.0  
+**Version:** 3.0  
 **Security Assessment Status:** ✅ PASSED
 
 ---
@@ -615,6 +615,7 @@ To further restrict access, add a permission boundary:
 
 | Version | Date | Security Changes |
 |---------|------|------------------|
+| 3.0 | 2025-11-18 | Added Lambda, DynamoDB, ElastiCache scanning. Added CloudWatch metrics access. |
 | 2.0 | 2025-11-18 | Added RDS, S3, CloudFront scanning. Updated IAM policy. |
 | 1.0 | 2025-11-18 | Initial release. Security audit completed. |
 

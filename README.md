@@ -27,6 +27,9 @@
 - 🗃️ **Idle RDS Instances** - Stopped databases still incurring storage costs
 - 🪣 **Empty S3 Buckets** - Completely empty buckets indicating abandoned projects
 - 🌍 **Unused CloudFront Distributions** - Disabled distributions still in configuration
+- ⚡ **Unused Lambda Functions** - Functions with zero invocations in 90 days
+- 📊 **Idle DynamoDB Tables** - Tables with no read/write activity in 30 days
+- 🔴 **Idle ElastiCache Clusters** - Redis/Memcached clusters with zero connections in 14 days
 
 ### 🔒 Safety First
 

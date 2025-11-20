@@ -19,6 +19,13 @@
         "s3:ListBucket",
         "s3:GetBucketLocation",
         "cloudfront:ListDistributions",
+        "lambda:ListFunctions",
+        "lambda:GetFunction",
+        "dynamodb:ListTables",
+        "dynamodb:DescribeTable",
+        "elasticache:DescribeReplicationGroups",
+        "elasticache:DescribeCacheClusters",
+        "cloudwatch:GetMetricStatistics",
         "sts:GetCallerIdentity"
       ],
       "Resource": "*"

@@ -113,6 +113,20 @@ Welcome to the complete documentation for CDOps Cloud Zombie Hunter v2.0. This i
 
 ---
 
+### 🆕 [UPDATE_V3.md](UPDATE_V3.md) (15.2 KB)
+**Version 3.0 changelog and upgrade guide**
+
+**Contains:**
+- New features (Lambda, DynamoDB, ElastiCache scanning - 11 resource types total)
+- Updated IAM permissions (CloudWatch metrics access)
+- Migration notes for existing users
+- Expected cost savings examples (30-50% more potential)
+- Implementation details for new scanners
+
+**Read this if you're:** Upgrading from v2.0 or want to know what's new in v3.0
+
+---
+
 ### 🆕 [UPDATE_V2.md](UPDATE_V2.md) (7.8 KB)
 **Version 2.0 changelog and upgrade guide**
 
@@ -123,7 +137,7 @@ Welcome to the complete documentation for CDOps Cloud Zombie Hunter v2.0. This i
 - Expected cost savings examples
 - Implementation details
 
-**Read this if you're:** Upgrading from v1.0 or want to know what's new
+**Read this if you're:** Reviewing version 2.0 changes
 
 ---
 
@@ -386,6 +400,7 @@ GitHub Actions workflow example for automated scanning
 
 | Version | Date | Key Changes | Docs Updated |
 |---------|------|-------------|--------------|
+| 3.0 | 2025-11-18 | Added Lambda, DynamoDB, ElastiCache scanning (11 resource types total). CloudWatch metrics integration. | All, UPDATE_V3.md |
 | 2.0 | 2025-11-18 | Added RDS, S3, CloudFront scanning. Total savings calculation. Security audit. | All |
 | 1.0 | 2025-11-18 | Initial release. 5 resource types. | Initial docs |
 
