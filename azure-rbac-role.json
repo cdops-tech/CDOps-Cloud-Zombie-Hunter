@@ -1,0 +1,27 @@
+{
+  "Name": "CDOps Zombie Hunter Reader",
+  "Description": "Read-only permissions for CDOps Cloud Zombie Hunter to scan Azure resources",
+  "Actions": [
+    "Microsoft.Compute/disks/read",
+    "Microsoft.Compute/snapshots/read",
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/instanceView/read",
+    "Microsoft.Network/publicIPAddresses/read",
+    "Microsoft.Network/loadBalancers/read",
+    "Microsoft.Network/loadBalancers/backendAddressPools/read",
+    "Microsoft.Sql/servers/read",
+    "Microsoft.Sql/servers/databases/read",
+    "Microsoft.Storage/storageAccounts/read",
+    "Microsoft.Storage/storageAccounts/listKeys/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+    "Microsoft.Cdn/profiles/read",
+    "Microsoft.Cdn/profiles/endpoints/read",
+    "Microsoft.Resources/subscriptions/read",
+    "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/locations/read"
+  ],
+  "NotActions": [],
+  "AssignableScopes": [
+    "/subscriptions/{subscription-id}"
+  ]
+}

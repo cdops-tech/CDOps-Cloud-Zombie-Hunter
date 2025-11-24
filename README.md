@@ -2,11 +2,13 @@
 
 <div align="center">
 
-**A safe, read-only tool to detect wasted cloud spend in AWS**
+**A safe, read-only tool to detect wasted cloud spend across AWS, Azure, and GCP**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![boto3](https://img.shields.io/badge/AWS-boto3-orange.svg)](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html)
+[![AWS](https://img.shields.io/badge/cloud-AWS-orange.svg)](https://aws.amazon.com/)
+[![Azure](https://img.shields.io/badge/cloud-Azure-blue.svg)](https://azure.microsoft.com/)
+[![GCP](https://img.shields.io/badge/cloud-GCP-red.svg)](https://cloud.google.com/)
 [![Security](https://img.shields.io/badge/security-audited-green.svg)](SECURITY.md)
 
 *By [CDOps Tech](https://cdops.tech) - Your trusted DevSecOps partner*
@@ -17,7 +19,9 @@
 
 ## 🎯 What is This?
 
-**CDOps Cloud Zombie Hunter** is an open-source command-line utility that scans your AWS environment for unused resources—what we call "zombies"—that are quietly draining your budget. These include:
+**CDOps Cloud Zombie Hunter** is an open-source command-line utility that scans your **AWS, Azure, and GCP** environments for unused resources—what we call "zombies"—that are quietly draining your budget.
+
+### AWS Resources (11 types):
 
 - 🗄️ **Unattached EBS Volumes** - Storage volumes not connected to any instance
 - 📸 **Obsolete EBS Snapshots** - Snapshots older than 30 days not linked to any AMI
@@ -30,6 +34,34 @@
 - ⚡ **Unused Lambda Functions** - Functions with zero invocations in 90 days
 - 📊 **Idle DynamoDB Tables** - Tables with no read/write activity in 30 days
 - 🔴 **Idle ElastiCache Clusters** - Redis/Memcached clusters with zero connections in 14 days
+
+### Azure Resources (11 types):
+
+- 💿 **Unattached Managed Disks** - Disks not attached to any VM
+- 📸 **Obsolete Snapshots** - Snapshots older than 30 days
+- 💤 **Stopped Virtual Machines** - VMs in stopped/deallocated state
+- 🌐 **Unassociated Public IPs** - Public IPs without network interface
+- ⚖️ **Unused Load Balancers** - Load balancers with no backend pools
+- 🗃️ **Stopped SQL Databases** - Paused Azure SQL databases
+- 🪣 **Empty Storage Accounts** - Storage accounts flagged for review
+- 🌍 **Unused CDN Endpoints** - Stopped CDN endpoints
+- ⚡ **Unused Function Apps** - Stopped Azure Functions
+- 📊 **Idle Cosmos DB Accounts** - Cosmos DB with low activity (placeholder)
+- 🔴 **Idle Redis Caches** - Redis caches with low connections (placeholder)
+
+### GCP Resources (11 types):
+
+- 💿 **Unattached Persistent Disks** - Disks not attached to any instance
+- 📸 **Obsolete Snapshots** - Snapshots older than 30 days
+- 💤 **Stopped Compute Instances** - Instances in TERMINATED/STOPPED state
+- 🌐 **Unattached Static IPs** - Reserved IPs without users
+- ⚖️ **Unused Load Balancers** - Forwarding rules with no backend
+- 🗃️ **Stopped Cloud SQL Instances** - SQL instances in stopped state (placeholder)
+- 🪣 **Empty Storage Buckets** - Buckets with no objects
+- ⚡ **Unused Cloud Functions** - Functions with no invocations (placeholder)
+- 📊 **Idle Firestore Databases** - Firestore/Datastore with low activity (placeholder)
+- 🔴 **Idle Memorystore Instances** - Redis/Memcached with low connections (placeholder)
+- 🌍 **Unused Cloud CDN** - CDN services with no traffic (placeholder)
 
 ### 🔒 Safety First
 
@@ -49,8 +81,11 @@ You can review the source code with confidence—it's heavily commented and tran
 ### Prerequisites
 
 - Python 3.8 or higher
-- AWS credentials configured (see [AWS Credentials Setup](#aws-credentials-setup))
-- AWS IAM permissions for read-only access (see [IAM Policy](#iam-policy))
+- Cloud credentials configured:
+  - **AWS**: See [AWS Credentials Setup](#aws-credentials-setup)
+  - **Azure**: See [AZURE_SETUP.md](AZURE_SETUP.md)
+  - **GCP**: See [GCP_SETUP.md](GCP_SETUP.md)
+- Cloud IAM permissions for read-only access (see provider-specific docs)
 
 ### Installation
 
@@ -73,25 +108,35 @@ pip install -r requirements.txt
 # Activate virtual environment (if using venv)
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Scan your default AWS region
-python zombie_hunter.py
+# Scan AWS (default cloud)
+python zombie_hunter.py --cloud aws
 
-# Scan a specific region
-python zombie_hunter.py --region us-west-2
+# Scan Azure
+python zombie_hunter.py --cloud azure
+
+# Scan GCP
+python zombie_hunter.py --cloud gcp
+
+# Scan specific region
+python zombie_hunter.py --cloud aws --region us-west-2
 
 # Scan ALL regions (comprehensive audit)
-python zombie_hunter.py --all-regions
+python zombie_hunter.py --cloud aws --all-regions
+python zombie_hunter.py --cloud azure --all-regions
+python zombie_hunter.py --cloud gcp --all-regions
 
 # Enable verbose output
-python zombie_hunter.py --verbose
+python zombie_hunter.py --cloud aws --verbose
 
 # Save report with custom filename
-python zombie_hunter.py --output my_audit_2024.csv
+python zombie_hunter.py --cloud azure --output my_azure_audit.csv
 ```
 
 ---
 
-## 📋 AWS Credentials Setup
+## 📋 Cloud Credentials Setup
+
+### AWS Credentials
 
 The tool uses the standard AWS credentials chain. Configure credentials using **one** of these methods:
 
@@ -124,9 +169,31 @@ And `~/.aws/config`:
 region = us-east-1
 ```
 
+### Azure Credentials
+
+Azure authentication supports multiple methods:
+- **Azure CLI**: `az login` (recommended for local development)
+- **Environment Variables**: Service principal credentials
+- **Managed Identity**: For Azure VMs/Container Apps
+- **Service Principal**: For CI/CD pipelines
+
+See [AZURE_SETUP.md](AZURE_SETUP.md) for detailed setup instructions.
+
+### GCP Credentials
+
+GCP authentication supports:
+- **gcloud CLI**: `gcloud auth application-default login` (recommended)
+- **Service Account Key**: JSON key file
+- **Workload Identity**: For GKE/Cloud Run
+- **Compute Engine Service Account**: For GCE instances
+
+See [GCP_SETUP.md](GCP_SETUP.md) for detailed setup instructions.
+
 ---
 
-## 🔐 IAM Policy
+## 🔐 IAM Policies
+
+### AWS IAM Policy
 
 To run this tool safely, create a dedicated IAM user or role with **read-only** permissions. Here's the exact policy you need:
 
@@ -181,6 +248,24 @@ aws iam attach-user-policy \
 ```
 
 A complete policy file is included in this repository: [`iam-policy.json`](iam-policy.json)
+
+### Azure RBAC Policy
+
+For Azure, you need a custom RBAC role with read-only permissions:
+- Virtual Machines, Disks, Snapshots
+- Network Interfaces, Public IPs, Load Balancers
+- SQL Databases, Storage Accounts, CDN Profiles
+
+See [`azure-rbac-role.json`](azure-rbac-role.json) and [AZURE_SETUP.md](AZURE_SETUP.md) for complete setup.
+
+### GCP IAM Policy
+
+For GCP, you need a custom IAM role with read-only permissions:
+- Compute Engine (instances, disks, snapshots, IPs, forwarding rules)
+- Cloud Storage (buckets, objects)
+- Cloud Functions, Cloud SQL, Monitoring
+
+See [`gcp-iam-role.json`](gcp-iam-role.json) and [GCP_SETUP.md](GCP_SETUP.md) for complete setup.
 
 ---
 
@@ -433,11 +518,13 @@ Please open an issue on GitHub with:
 ## 🗺️ Roadmap
 
 Future enhancements we're considering:
-- [ ] Support for more AWS services (Lambda, DynamoDB, ElastiCache)
-- [ ] CloudWatch metrics analysis for truly idle resources
-- [ ] Azure and GCP support
+- [x] Azure support ✅ (v4.0)
+- [x] GCP support ✅ (v4.0)
+- [ ] CloudWatch/Azure Monitor/Cloud Monitoring metrics analysis
+- [ ] Enhanced GCP Cloud SQL and Cloud Functions scanning
 - [ ] Interactive cleanup mode (with confirmations)
 - [ ] Cost trend analysis over time
+- [ ] Multi-cloud unified reports
 - [ ] Slack/Email notifications
 - [ ] Web dashboard
 

@@ -1,0 +1,28 @@
+{
+  "title": "CDOps Zombie Hunter Reader",
+  "description": "Read-only permissions for CDOps Cloud Zombie Hunter to scan GCP resources",
+  "stage": "GA",
+  "includedPermissions": [
+    "compute.disks.list",
+    "compute.disks.get",
+    "compute.snapshots.list",
+    "compute.snapshots.get",
+    "compute.instances.list",
+    "compute.instances.get",
+    "compute.addresses.list",
+    "compute.addresses.get",
+    "compute.forwardingRules.list",
+    "compute.forwardingRules.get",
+    "compute.backendServices.list",
+    "compute.backendServices.get",
+    "compute.regions.list",
+    "compute.zones.list",
+    "storage.buckets.list",
+    "storage.buckets.get",
+    "storage.objects.list",
+    "cloudfunctions.functions.list",
+    "cloudfunctions.functions.get",
+    "monitoring.timeSeries.list",
+    "resourcemanager.projects.get"
+  ]
+}
